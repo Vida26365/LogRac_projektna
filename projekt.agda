@@ -16,3 +16,15 @@ data Formula : Set where
 ---------------
 -- Problem 2 --
 ---------------
+
+data Literal : Set where
+  Pos : ℕ → Literal
+  Neg : ℕ → Literal
+
+infixr 6 _∧n_
+infixr 5 _∨n_
+
+data NNF : Set where
+  lit  : Literal → NNF
+  _∧n_ : NNF → NNF → NNF
+  _∨n_ : NNF → NNF → NNF
