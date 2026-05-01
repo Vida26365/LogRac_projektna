@@ -42,3 +42,9 @@ to-nnf (¬ (f ∧ g)) = to-nnf (¬ f) ∨n to-nnf ( ¬ g)
 to-nnf (¬ (f ∨ g)) = to-nnf (¬ f) ∧n to-nnf ( ¬ g)
 to-nnf (f ∧ g) = to-nnf f ∧n to-nnf g
 to-nnf (f ∨ g) = to-nnf f ∨n to-nnf g
+
+
+---------------
+-- Problem 4 --
+---------------
+
