@@ -28,3 +28,17 @@ data NNF : Set where
   lit  : Literal → NNF
   _∧n_ : NNF → NNF → NNF
   _∨n_ : NNF → NNF → NNF
+
+
+---------------
+-- Problem 3 --
+---------------
+
+to-nnf : Formula → NNF
+to-nnf (Var x) = lit ( Pos x )
+to-nnf (¬ Var x) = lit ( Neg x)
+to-nnf (¬ (¬ f)) = to-nnf f
+to-nnf (¬ (f ∧ g)) = to-nnf (¬ f) ∨n to-nnf ( ¬ g)
+to-nnf (¬ (f ∨ g)) = to-nnf (¬ f) ∧n to-nnf ( ¬ g)
+to-nnf (f ∧ g) = to-nnf f ∧n to-nnf g
+to-nnf (f ∨ g) = to-nnf f ∨n to-nnf g
