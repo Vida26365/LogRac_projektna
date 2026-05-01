@@ -1,5 +1,4 @@
-
-module LogRac_projektna/projekt where
+module projekt where
 
 open import Data.Nat using (ℕ)
 
