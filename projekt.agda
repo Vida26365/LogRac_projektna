@@ -162,11 +162,25 @@ eval-nnf asg (nft ∨An nfn) with ( (eval-nnf asg nft) , (eval-nnf asg nfn) )
 
 data Disjunct : Set where
   litd : Literal → Disjunct
-  _l∨d_ : Literal → Disjunct → Disjunct
+  _∨d_ : Literal → Disjunct → Disjunct
 
 data CNF : Set where
   _∨c_ : Disjunct → CNF → CNF
 
 
+---------------
+-- Problem 8 --
+---------------
 
+eval-cnf : Assignment → CNF → Maybe Bool
+eval-cnf asg (litd x ∨c cnf) with (eval-nnf asg (lit x) , eval-cnf asg cnf )
+... | just x₁ , just x₂ = just (x₁ ∨ x₂)
+... | just x₁ , nothing = nothing
+... | nothing , just x₁ = nothing
+... | nothing , nothing = nothing
+eval-cnf asg ((x ∨d d) ∨c cnf) with ( eval-nnf asg (lit x),  eval-cnf asg ( d ∨c cnf))
+... | just z , just w = just (w ∨ z)
+... | just x₁ , nothing = nothing
+... | nothing , just x₁ = nothing
+... | nothing , nothing = nothing
 
