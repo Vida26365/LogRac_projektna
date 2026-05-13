@@ -10,7 +10,7 @@ open import Relation.Nullary using (Dec; yes; no; ¬_; ¬?)
 open import Data.Maybe using (Maybe; nothing; just)
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong; subst; _≢_)
--- open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
+open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
 open import Data.List using (List; []; _∷_; head; _++_; map)
 -- open import Data.Empty using (⊥)
@@ -60,11 +60,6 @@ to-nnf (f ∨A g) = to-nnf f ∨An to-nnf g
 -- Problem 4 --
 ---------------
 
--- data Dec (A : Set) : Set where
---   yes :    A  → Dec A
---   no  : (¬ A) → Dec A
-
-
 record DecType : Set₁ where
   field
     carr   : Set
@@ -103,6 +98,50 @@ module Assoc (K : DecType) (V : Set) where
   ... | no p = kvs ‼ k
 
   _[_]≔_ : Assoc → carr K → V → Assoc
-  kvs [ k ]≔ v = {!!}
+  [] [ k ]≔ v = (( k , v)) ∷ []
+  ( x ∷ kvs) [ k ]≔ v with k ∈? (x ∷ kvs)
+  ... | yes ∈-here = (k , v) ∷ kvs
+  ... | yes (∈-there p) = x ∷ ( kvs [ k ]≔ v )
+  ... | no p = ((k , v)) ∷ kvs 
+
+
+---------------
+-- Problem 5 --
+---------------
+
+_eqn_ : (m n : ℕ) → Dec (m ≡ n)
+zero eqn zero = yes refl
+zero eqn suc n = no (λ ())
+suc m eqn zero = no (λ ())
+suc m eqn suc n with m eqn n
+... | yes p = yes (cong suc p)
+... | no ¬p = no (λ h → ¬p (cong pred h))
+
+open Assoc record { carr = ℕ ; test-≡ = _eqn_ } Bool
+
+Assignment : Set 
+Assignment = Assoc
+
+
+eval : Assignment → Formula → Maybe Bool
+eval asg (Var x) = asg ‼ x
+eval asg (¬A fmn) with (eval asg fmn)
+... | just false = just true
+... | just true = just false
+... | nothing = nothing
+eval asg (fmn ∧A fml) with (eval asg fmn)
+... | nothing = nothing
+... | just x with (eval asg fmn)
+...   | just y = just (x ∧ y)
+...   | nothing = nothing
+eval asg (fmn ∨A fml) with (eval asg fmn)
+... | nothing = nothing
+... | just x with (eval asg fml)
+...   | just y = just (x ∨ y)
+...   | nothing = nothing
+
+
+
+
 
 
