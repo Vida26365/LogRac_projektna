@@ -141,6 +141,31 @@ eval asg (fmn ∨A fml) with (eval asg fmn)
 ...   | nothing = nothing
 
 
+---------------
+-- Problem 6 --
+---------------
+eval-nnf : Assignment → NNF → Maybe Bool
+eval-nnf asg (lit (Pos x)) = asg ‼ x
+eval-nnf asg (lit (Neg x)) = eval asg (¬A ( Var x ))
+eval-nnf asg (nft ∧An nfn) with (eval-nnf asg nft)
+... | nothing = nothing
+... | just x with (eval-nnf asg nfn)
+... | just y = just ( x ∧ y)
+... | nothing = nothing
+eval-nnf asg (nft ∨An nfn) with ( (eval-nnf asg nft) , (eval-nnf asg nfn) )
+... | just x , just y = just (x ∨ y)
+... | _ , _ = nothing
+
+---------------
+-- Problem 7 --
+---------------
+
+data Disjunct : Set where
+  litd : Literal → Disjunct
+  _l∨d_ : Literal → Disjunct → Disjunct
+
+data CNF : Set where
+  _∨c_ : Disjunct → CNF → CNF
 
 
 
