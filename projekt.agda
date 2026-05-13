@@ -154,7 +154,9 @@ eval-nnf asg (nft ∧An nfn) with (eval-nnf asg nft)
 ... | nothing = nothing
 eval-nnf asg (nft ∨An nfn) with ( (eval-nnf asg nft) , (eval-nnf asg nfn) )
 ... | just x , just y = just (x ∨ y)
-... | _ , _ = nothing
+... | just x₁ , nothing = nothing
+... | nothing , just x₁ = nothing
+... | nothing , nothing = nothing
 
 ---------------
 -- Problem 7 --
