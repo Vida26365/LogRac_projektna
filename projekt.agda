@@ -30,6 +30,9 @@ data Formula : Set where
   _∧A_ : Formula → Formula → Formula
   _∨A_ : Formula → Formula → Formula
 
+infixr 6 _∧A_
+infixr 5 _∨A_
+
 
 ---------------
 -- Problem 2 --
@@ -97,9 +100,9 @@ module Assoc (K : DecType) (V : Set) where
 
   lookup : {k : carr K} {kvs : Assoc} → k ∈ kvs → V
   lookup {_} {x ∷ kvs} ∈-here = proj₂ x
-  lookup {_} {x ∷ kvs} (∈-there ∈-here) = x .proj₂
-  lookup {_} {x ∷ kvs} (∈-there (∈-there p)) = x .proj₂
-
+  lookup {_} {x ∷ kvs} (∈-there p) = lookup p
+ 
+  
   _∈?_ : (k : carr K) → (kvs : Assoc) → Dec (k ∈ kvs)
   k ∈? [] = no λ ()
   
@@ -146,21 +149,16 @@ Assignment = Assoc
 
 eval : Assignment → Formula → Maybe Bool
 eval asg (Var x) = asg ‼ x
-eval asg (¬A fmn) with (eval asg fmn)
-... | just false = just true
-... | just true = just false
+eval asg (¬A ϕ) with (eval asg ϕ)
+... | just x = just (not x)
 ... | nothing = nothing
-eval asg (fmn ∧A fml) with (eval asg fmn)
-... | nothing = nothing
-... | just x with (eval asg fmn)
-...   | just y = just (x ∧ y)
-...   | nothing = nothing
-eval asg (fmn ∨A fml) with (eval asg fmn)
-... | nothing = nothing
-... | just x with (eval asg fml)
-...   | just y = just (x ∨ y)
-...   | nothing = nothing
+eval asg (ϕ ∧A ψ) with (eval asg ϕ) , (eval asg ψ)
+... | (just x , just y) = just (x ∧ y)
+... | _ = nothing
 
+eval asg (ϕ ∨A ψ) with ((eval asg ϕ) , (eval asg ψ))
+... | (just x , just y) = just (x ∨ y)
+... | _ = nothing
 
 ---------------
 -- Problem 6 --
@@ -171,16 +169,12 @@ eval asg (fmn ∨A fml) with (eval asg fmn)
 eval-nnf : Assignment → NNF → Maybe Bool
 eval-nnf asg (lit (Pos x)) = asg ‼ x
 eval-nnf asg (lit (Neg x)) = eval asg (¬A ( Var x ))
-eval-nnf asg (nft ∧An nfn) with (eval-nnf asg nft)
-... | nothing = nothing
-... | just x with (eval-nnf asg nfn)
-... | just y = just ( x ∧ y)
-... | nothing = nothing
-eval-nnf asg (nft ∨An nfn) with ( (eval-nnf asg nft) , (eval-nnf asg nfn) )
+eval-nnf asg (ϕ ∧An ψ) with ((eval-nnf asg ϕ) , (eval-nnf asg ψ))
+... | just x , just y = just (x ∧ y)
+... | _ , _ = nothing
+eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 ... | just x , just y = just (x ∨ y)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
+... | _ , _ = nothing
 
 ---------------
 -- Problem 7 --
@@ -197,8 +191,10 @@ data Disjunct : Set where
   _∨d_ : Literal → Disjunct → Disjunct
 
 data CNF : Set where
-  _∨c_ : Disjunct → CNF → CNF
+  base : Disjunct → CNF
+  _∧c_ : Disjunct → CNF → CNF
 
+infixr 4 _∧c_
 
 ---------------
 -- Problem 8 --
@@ -213,16 +209,10 @@ eval-disjunct asg (x ∨d d) with (eval-nnf asg (lit x) , eval-disjunct asg d)
 ... | _ , _ = nothing
 
 eval-cnf : Assignment → CNF → Maybe Bool
-eval-cnf asg (litd x ∨c cnf) with (eval-nnf asg (lit x) , eval-cnf asg cnf )
-... | just x₁ , just x₂ = just (x₁ ∨ x₂)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
-eval-cnf asg ((x ∨d d) ∨c cnf) with ( eval-nnf asg (lit x),  eval-cnf asg ( d ∨c cnf))
-... | just z , just w = just (w ∨ z)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
+eval-cnf asg (base d) = eval-disjunct asg d
+eval-cnf asg (d ∧c cnf) with (eval-disjunct asg d , eval-cnf asg cnf)
+... | just a , just b = just (a ∧ b)
+... | _ , _ = nothing
 
 ---------------
 -- Problem 9 --
