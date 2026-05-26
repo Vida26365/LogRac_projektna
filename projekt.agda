@@ -14,9 +14,15 @@ open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
 open import Data.List using (List; []; _∷_; head; _++_; map)
 -- open import Data.Empty using (⊥)
+
 ---------------
 -- Problem 1 --
 ---------------
+-- Define a type of formulas called Formula, with the following grammar:
+--   Formula → Var n
+--           | ¬ Formula
+--           | Formula ∧ Formula
+--           | Formula ∨ Formula
 
 data Formula : Set where
   Var : ℕ → Formula
@@ -24,10 +30,19 @@ data Formula : Set where
   _∧A_ : Formula → Formula → Formula
   _∨A_ : Formula → Formula → Formula
 
+infixr 6 _∧A_
+infixr 5 _∨A_
+
 
 ---------------
 -- Problem 2 --
 ---------------
+-- Define a type of negation normal form formulas called NNF, with the following grammar:
+--   Literal → Var n
+--           | ¬ Var n
+--   NNF → Literal
+--       | NNF ∧ NNF
+--       | NNF ∨ NNF
 
 data Literal : Set where
   Pos : ℕ → Literal
@@ -45,6 +60,8 @@ data NNF : Set where
 ---------------
 -- Problem 3 --
 ---------------
+-- Construct a function to-nnf of type Formula → NNF that converts a formula
+-- to an equivalent formula in negation normal form.
 
 to-nnf : Formula → NNF
 to-nnf (Var x) = lit ( Pos x )
@@ -55,10 +72,15 @@ to-nnf (¬A (f ∨A g)) = to-nnf (¬A f) ∧An to-nnf ( ¬A g)
 to-nnf (f ∧A g) = to-nnf f ∧An to-nnf g
 to-nnf (f ∨A g) = to-nnf f ∨An to-nnf g
 
-
 ---------------
 -- Problem 4 --
 ---------------
+-- Copy the Assoc module from week 9 exercises and complete it to a fully
+-- working implementation of an associative structure (associative list, dictionary, etc.).
+-- Then use:
+--   open Assoc ℕ test-≡ Bool
+--   Assignment : Set
+--   Assignment = Assoc
 
 record DecType : Set₁ where
   field
@@ -78,9 +100,9 @@ module Assoc (K : DecType) (V : Set) where
 
   lookup : {k : carr K} {kvs : Assoc} → k ∈ kvs → V
   lookup {_} {x ∷ kvs} ∈-here = proj₂ x
-  lookup {_} {x ∷ kvs} (∈-there ∈-here) = x .proj₂
-  lookup {_} {x ∷ kvs} (∈-there (∈-there p)) = x .proj₂
-
+  lookup {_} {x ∷ kvs} (∈-there p) = lookup p
+ 
+  
   _∈?_ : (k : carr K) → (kvs : Assoc) → Dec (k ∈ kvs)
   k ∈? [] = no λ ()
   
@@ -108,6 +130,8 @@ module Assoc (K : DecType) (V : Set) where
 ---------------
 -- Problem 5 --
 ---------------
+-- Define an evaluation function eval : Assignment → Formula → Maybe Bool
+-- assigning to each assignment of variables and formula its truth value.
 
 _eqn_ : (m n : ℕ) → Dec (m ≡ n)
 zero eqn zero = yes refl
@@ -125,64 +149,93 @@ Assignment = Assoc
 
 eval : Assignment → Formula → Maybe Bool
 eval asg (Var x) = asg ‼ x
-eval asg (¬A fmn) with (eval asg fmn)
-... | just false = just true
-... | just true = just false
+eval asg (¬A ϕ) with (eval asg ϕ)
+... | just x = just (not x)
 ... | nothing = nothing
-eval asg (fmn ∧A fml) with (eval asg fmn)
-... | nothing = nothing
-... | just x with (eval asg fmn)
-...   | just y = just (x ∧ y)
-...   | nothing = nothing
-eval asg (fmn ∨A fml) with (eval asg fmn)
-... | nothing = nothing
-... | just x with (eval asg fml)
-...   | just y = just (x ∨ y)
-...   | nothing = nothing
+eval asg (ϕ ∧A ψ) with (eval asg ϕ) , (eval asg ψ)
+... | (just x , just y) = just (x ∧ y)
+... | _ = nothing
 
+eval asg (ϕ ∨A ψ) with ((eval asg ϕ) , (eval asg ψ))
+... | (just x , just y) = just (x ∨ y)
+... | _ = nothing
 
 ---------------
 -- Problem 6 --
 ---------------
+-- Define an evaluation function eval-nnf : Assignment → NNF → Maybe Bool
+-- assigning to each assignment of variables and NNF formula its truth value.
+
 eval-nnf : Assignment → NNF → Maybe Bool
 eval-nnf asg (lit (Pos x)) = asg ‼ x
 eval-nnf asg (lit (Neg x)) = eval asg (¬A ( Var x ))
-eval-nnf asg (nft ∧An nfn) with (eval-nnf asg nft)
-... | nothing = nothing
-... | just x with (eval-nnf asg nfn)
-... | just y = just ( x ∧ y)
-... | nothing = nothing
-eval-nnf asg (nft ∨An nfn) with ( (eval-nnf asg nft) , (eval-nnf asg nfn) )
+eval-nnf asg (ϕ ∧An ψ) with ((eval-nnf asg ϕ) , (eval-nnf asg ψ))
+... | just x , just y = just (x ∧ y)
+... | _ , _ = nothing
+eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 ... | just x , just y = just (x ∨ y)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
+... | _ , _ = nothing
 
 ---------------
 -- Problem 7 --
 ---------------
+-- Define a type of conjunction normal form formulas called CNF, with the following grammar:
+--   Literal  → Var n
+--            | ¬ Var n
+--   Disjunct → Literal
+--            | Literal ∨ Disjunct
+--   CNF      → Disjunct ∨ CNF
 
 data Disjunct : Set where
   litd : Literal → Disjunct
   _∨d_ : Literal → Disjunct → Disjunct
 
 data CNF : Set where
-  _∨c_ : Disjunct → CNF → CNF
+  base : Disjunct → CNF
+  _∧c_ : Disjunct → CNF → CNF
 
+infixr 4 _∧c_
 
 ---------------
 -- Problem 8 --
 ---------------
+-- Define an evaluation function eval-cnf : Assignment → CNF → Maybe Bool
+-- assigning to each assignment of variables and CNF formula its truth value.
+
+eval-disjunct : Assignment → Disjunct → Maybe Bool
+eval-disjunct asg (litd x) = eval-nnf asg (lit x)
+eval-disjunct asg (x ∨d d) with (eval-nnf asg (lit x) , eval-disjunct asg d)
+... | just a , just b = just (a ∨ b)
+... | _ , _ = nothing
 
 eval-cnf : Assignment → CNF → Maybe Bool
-eval-cnf asg (litd x ∨c cnf) with (eval-nnf asg (lit x) , eval-cnf asg cnf )
-... | just x₁ , just x₂ = just (x₁ ∨ x₂)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
-eval-cnf asg ((x ∨d d) ∨c cnf) with ( eval-nnf asg (lit x),  eval-cnf asg ( d ∨c cnf))
-... | just z , just w = just (w ∨ z)
-... | just x₁ , nothing = nothing
-... | nothing , just x₁ = nothing
-... | nothing , nothing = nothing
+eval-cnf asg (base d) = eval-disjunct asg d
+eval-cnf asg (d ∧c cnf) with (eval-disjunct asg d , eval-cnf asg cnf)
+... | just a , just b = just (a ∧ b)
+... | _ , _ = nothing
 
+---------------
+-- Problem 9 --
+---------------
+-- Write a SAT solver for CNF formulas.
+-- Output: either an assignment such that eval-cnf asg cnf ≡ just true,
+--         or a proof that no such assignment exists.
+-- Note: a more complex implementation (e.g. DPLL) will be graded higher.
+
+----------------
+-- Problem 10 --
+----------------
+-- Show that the SAT solver is correct, if that is not obvious from the output type.
+-- i.e. if the solver returns an assignment, prove eval-cnf asg cnf ≡ just true.
+
+----------------
+-- Problem 11 --
+----------------
+-- Write a function that converts an NNF formula to an equisatisfiable CNF formula.
+-- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
+
+----------------
+-- Problem 12 --
+----------------
+-- Use the above to construct a SAT solver for any Formula.
+-- i.e. compose to-nnf, NNF-to-CNF, and the CNF SAT solver.
