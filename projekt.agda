@@ -48,6 +48,10 @@ data Literal : Set where
   Pos : ℕ → Literal
   Neg : ℕ → Literal
 
+neg-lit : Literal → Literal
+neg-lit (Pos n) = Neg n
+neg-lit (Neg n) = Pos n
+
 infixr 6 _∧An_
 infixr 5 _∨An_
 
@@ -166,6 +170,12 @@ eval asg (ϕ ∨A ψ) with ((eval asg ϕ) , (eval asg ψ))
 -- Define an evaluation function eval-nnf : Assignment → NNF → Maybe Bool
 -- assigning to each assignment of variables and NNF formula its truth value.
 
+eval-literal : Assignment → Literal → Maybe Bool
+eval-literal asg (Pos x) = asg ‼ x
+eval-literal asg (Neg x) with asg ‼ x
+... | just b = just (not b)
+... | nothing = nothing
+
 eval-nnf : Assignment → NNF → Maybe Bool
 eval-nnf asg (lit (Pos x)) = asg ‼ x
 eval-nnf asg (lit (Neg x)) = eval asg (¬A ( Var x ))
@@ -186,21 +196,9 @@ eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 --            | Literal ∨ Disjunct
 --   CNF      → Disjunct ∨ CNF
 
-data Disjunct : Set where
-  litd : Literal → Disjunct
-  _∨d_ : Literal → Disjunct → Disjunct
 
-data CNF : Set where
-  base : Disjunct → CNF
-  _∧c_ : Disjunct → CNF → CNF
-
--- Concatenation of CNF formulas
-_++c_ : CNF → CNF → CNF
-base d   ++c c2 = d ∧c c2
-(d ∧c c) ++c c2 = d ∧c (c ++c c2)
-
-infixr 5 _++c_
-infixr 4 _∧c_
+Disjunct = List Literal
+CNF = List Disjunct
 
 ---------------
 -- Problem 8 --
@@ -209,16 +207,16 @@ infixr 4 _∧c_
 -- assigning to each assignment of variables and CNF formula its truth value.
 
 eval-disjunct : Assignment → Disjunct → Maybe Bool
-eval-disjunct asg (litd x) = eval-nnf asg (lit x)
-eval-disjunct asg (x ∨d d) with (eval-nnf asg (lit x) , eval-disjunct asg d)
-... | just a , just b = just (a ∨ b)
-... | _ , _ = nothing
+eval-disjunct asg []      = just false
+eval-disjunct asg (x ∷ p) with eval-literal asg x | eval-disjunct asg p
+... | just a  | just b  = just (a ∨ b)
+... | _       | _       = nothing
 
 eval-cnf : Assignment → CNF → Maybe Bool
-eval-cnf asg (base d) = eval-disjunct asg d
-eval-cnf asg (d ∧c cnf) with (eval-disjunct asg d , eval-cnf asg cnf)
-... | just a , just b = just (a ∧ b)
-... | _ , _ = nothing
+eval-cnf asg []      = just true
+eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
+... | just a  | just b  = just (a ∧ b)
+... | _       | _       = nothing
 
 ---------------
 -- Problem 9 --
@@ -248,41 +246,34 @@ data SatResult (cnf : CNF) : Set where
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
 
 -- First see the largest variable index used so we keep same var indices
-max-var-lit : Literal → ℕ
-max-var-lit (Pos n) = n
-max-var-lit (Neg n) = n
 
-max-var-nnf : NNF → ℕ
-max-var-nnf (lit x)   = max-var-lit x
-max-var-nnf (ϕ ∧An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
-max-var-nnf (ϕ ∨An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
-
-neg-lit : Literal → Literal
-neg-lit (Pos n) = Neg n
-neg-lit (Neg n) = Pos n
-
--- CNF type has nonempty basecase os we need a separate disjunct
-clauses→cnf : List Disjunct → Disjunct → CNF
-clauses→cnf []       last = base last
-clauses→cnf (d ∷ ds) last = d ∧c clauses→cnf ds last
-
-tseytin : NNF → ℕ → (Literal × List Disjunct × ℕ)
-tseytin (lit x) n = (x , [] , n)
-tseytin (ϕ ∧An ψ) n =
-  let (a , csl , nl) = tseytin ϕ n
-      (b , csr , nr) = tseytin ψ nl
-      x  = Pos nr
-      ¬x = Neg nr
-      c1 = ¬x ∨d litd a
-      c2 = ¬x ∨d litd b
-      c3 = neg-lit a ∨d (neg-lit b ∨d litd x)
-  in (x , csl ++ csr ++ (c1 ∷ c2 ∷ c3 ∷ []) , suc nr)
-tseytin (ϕ ∨An ψ) n = {!!}
-
-to-cnf : NNF → CNF
-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
-... | root , cs , _ = clauses→cnf cs (litd root)
-
+module problem11 where
+  max-var-lit : Literal → ℕ
+  max-var-lit (Pos n) = n
+  max-var-lit (Neg n) = n
+  
+  max-var-nnf : NNF → ℕ
+  max-var-nnf (lit x)   = max-var-lit x
+  max-var-nnf (ϕ ∧An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
+  max-var-nnf (ϕ ∨An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
+    
+  tseytin : NNF → ℕ → (Literal × CNF × ℕ)
+  tseytin (lit x) n = (x , [] , n)
+  tseytin (ϕ ∧An ψ) n =
+    let (a , csl , nl) = tseytin ϕ n
+        (b , csr , nr) = tseytin ψ nl
+        x  = Pos nr
+        ¬x = Neg nr
+        c1 = ¬x ∷ a ∷ []
+        c2 = ¬x ∷ b ∷ []
+        c3 = neg-lit a ∷ (neg-lit b ∷ x ∷ [])
+    in (x , csl ++ csr ++ (c1 ∷ c2 ∷ c3 ∷ []) , suc nr)
+  tseytin (ϕ ∨An ψ) n = {!!}
+  
+  -- to-cnf : NNF → CNF
+  -- to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
+  -- ... | root , cs , _ = clauses→cnf cs (litd root)  
+  
 ----------------
 -- Problem 12 --
 ----------------
