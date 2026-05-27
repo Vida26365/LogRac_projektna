@@ -2,7 +2,7 @@
 
 module projekt where
 
-open import Data.Nat using (ℕ; zero; suc; pred; _+_)
+open import Data.Nat using (ℕ; zero; suc; pred; _+_; _⊔_)
 open import Relation.Binary using (Decidable; DecidableEquality)
 -- open import Data.List.Relation.Unary.Any using (Any; any?)
 -- open import Data.List.Relation.Unary.All using (All; all?)
@@ -194,6 +194,12 @@ data CNF : Set where
   base : Disjunct → CNF
   _∧c_ : Disjunct → CNF → CNF
 
+-- Concatenation of CNF formulas
+_++c_ : CNF → CNF → CNF
+base d   ++c c2 = d ∧c c2
+(d ∧c c) ++c c2 = d ∧c (c ++c c2)
+
+infixr 5 _++c_
 infixr 4 _∧c_
 
 ---------------
@@ -222,6 +228,13 @@ eval-cnf asg (d ∧c cnf) with (eval-disjunct asg d , eval-cnf asg cnf)
 --         or a proof that no such assignment exists.
 -- Note: a more complex implementation (e.g. DPLL) will be graded higher.
 
+data SatResult (cnf : CNF) : Set where
+  sat   : (asg : Assignment) → eval-cnf asg cnf ≡ just true → SatResult cnf
+  unsat : (∀ (asg : Assignment) → eval-cnf asg cnf ≢ just true) → SatResult cnf
+
+-- sat-solver : (cnf : CNF) → SatResult cnf
+-- sat-solver ϕ = {!!}
+
 ----------------
 -- Problem 10 --
 ----------------
@@ -233,6 +246,42 @@ eval-cnf asg (d ∧c cnf) with (eval-disjunct asg d , eval-cnf asg cnf)
 ----------------
 -- Write a function that converts an NNF formula to an equisatisfiable CNF formula.
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
+
+-- First see the largest variable index used so we keep same var indices
+max-var-lit : Literal → ℕ
+max-var-lit (Pos n) = n
+max-var-lit (Neg n) = n
+
+max-var-nnf : NNF → ℕ
+max-var-nnf (lit x)   = max-var-lit x
+max-var-nnf (ϕ ∧An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
+max-var-nnf (ϕ ∨An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
+
+neg-lit : Literal → Literal
+neg-lit (Pos n) = Neg n
+neg-lit (Neg n) = Pos n
+
+-- CNF type has nonempty basecase os we need a separate disjunct
+clauses→cnf : List Disjunct → Disjunct → CNF
+clauses→cnf []       last = base last
+clauses→cnf (d ∷ ds) last = d ∧c clauses→cnf ds last
+
+tseytin : NNF → ℕ → (Literal × List Disjunct × ℕ)
+tseytin (lit x) n = (x , [] , n)
+tseytin (ϕ ∧An ψ) n =
+  let (a , csl , nl) = tseytin ϕ n
+      (b , csr , nr) = tseytin ψ nl
+      x  = Pos nr
+      ¬x = Neg nr
+      c1 = ¬x ∨d litd a
+      c2 = ¬x ∨d litd b
+      c3 = neg-lit a ∨d (neg-lit b ∨d litd x)
+  in (x , csl ++ csr ++ (c1 ∷ c2 ∷ c3 ∷ []) , suc nr)
+tseytin (ϕ ∨An ψ) n = {!!}
+
+to-cnf : NNF → CNF
+to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
+... | root , cs , _ = clauses→cnf cs (litd root)
 
 ----------------
 -- Problem 12 --
