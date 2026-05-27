@@ -253,13 +253,13 @@ find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
 -- choose nekej
 -- preveri unit clause (while)
 
------ * Problem 10 --
----------------------
+-- * Problem 10 --
+------------------
 -- Show that the SAT solver is correct, if that is not obvious from the output type.
 -- i.e. if the solver returns an assignment, prove eval-cnf asg cnf ≡ just true.
 
------ * Problem 11 --
----------------------
+-- * Problem 11 --
+------------------
 -- Write a function that converts an NNF formula to an equisatisfiable CNF formula.
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
 
@@ -299,7 +299,7 @@ to-cnf : NNF → CNF
 to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 ... | root , cs , _ = (litd root) ∷ cs
   
------ * Problem 12 --
----------------------
+-- * Problem 12 --
+------------------
 -- Use the above to construct a SAT solver for any Formula.
 -- i.e. compose to-nnf, NNF-to-CNF, and the CNF SAT solver.
