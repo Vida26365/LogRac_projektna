@@ -295,8 +295,8 @@ tseytin (ϕ ∨An ψ) n =
       c3 = ¬x ∷ a ∷ b ∷ []
   in (x , csl ++ csr ++ (c1 ∷ c2 ∷ c3 ∷ []) , suc nr)
   
-to-cnf : NNF → CNF
-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
+nnf-to-cnf : NNF → CNF
+nnf-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 ... | root , cs , _ = (litd root) ∷ cs
   
 -- * Problem 12 --
