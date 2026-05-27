@@ -15,7 +15,6 @@ open import Data.Product using (_×_; _,_; proj₁; proj₂)
 open import Data.List using (List; []; _∷_; head; _++_; map)
 -- open import Data.Empty using (⊥)
 
------------------
 -- * Problem 1 --
 -----------------
 -- Define a type of formulas called Formula, with the following grammar:
@@ -34,7 +33,6 @@ infixr 6 _∧A_
 infixr 5 _∨A_
 
 
------------------
 -- * Problem 2 --
 -----------------
 -- Define a type of negation normal form formulas called NNF, with the following grammar:
@@ -61,7 +59,6 @@ data NNF : Set where
   _∨An_ : NNF → NNF → NNF
 
 
------------------
 -- * Problem 3 --
 -----------------
 -- Construct a function to-nnf of type Formula → NNF that converts a formula
@@ -76,7 +73,6 @@ to-nnf (¬A (f ∨A g)) = to-nnf (¬A f) ∧An to-nnf ( ¬A g)
 to-nnf (f ∧A g) = to-nnf f ∧An to-nnf g
 to-nnf (f ∨A g) = to-nnf f ∨An to-nnf g
 
------------------
 -- * Problem 4 --
 -----------------
 -- Copy the Assoc module from week 9 exercises and complete it to a fully
@@ -131,7 +127,6 @@ module Assoc (K : DecType) (V : Set) where
   ... | no p = ((k , v)) ∷ kvs 
 
 
------------------
 -- * Problem 5 --
 -----------------
 -- Define an evaluation function eval : Assignment → Formula → Maybe Bool
@@ -164,7 +159,6 @@ eval asg (ϕ ∨A ψ) with ((eval asg ϕ) , (eval asg ψ))
 ... | (just x , just y) = just (x ∨ y)
 ... | _ = nothing
 
------------------
 -- * Problem 6 --
 -----------------
 -- Define an evaluation function eval-nnf : Assignment → NNF → Maybe Bool
@@ -186,7 +180,6 @@ eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 ... | just x , just y = just (x ∨ y)
 ... | _ , _ = nothing
 
------------------
 -- * Problem 7 --
 -----------------
 -- Define a type of conjunction normal form formulas called CNF, with the following grammar:
@@ -203,7 +196,6 @@ CNF = List Disjunct
 litd : Literal → Disjunct
 litd x = x ∷ []
 
----------------
 -- Problem 8 --
 ---------------
 -- Define an evaluation function eval-cnf : Assignment → CNF → Maybe Bool
@@ -221,7 +213,6 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 ... | just a  | just b  = just (a ∧ b)
 ... | _       | _       = nothing
 
------------------
 -- * Problem 9 --
 -----------------
 -- Write a SAT solver for CNF formulas.
@@ -262,15 +253,13 @@ find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
 -- choose nekej
 -- preveri unit clause (while)
 
---------------------
--- * Problem 10 --
---------------------
+----- * Problem 10 --
+---------------------
 -- Show that the SAT solver is correct, if that is not obvious from the output type.
 -- i.e. if the solver returns an assignment, prove eval-cnf asg cnf ≡ just true.
 
---------------------
--- * Problem 11 --
---------------------
+----- * Problem 11 --
+---------------------
 -- Write a function that converts an NNF formula to an equisatisfiable CNF formula.
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
 
@@ -310,8 +299,7 @@ to-cnf : NNF → CNF
 to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 ... | root , cs , _ = (litd root) ∷ cs
   
---------------------
--- * Problem 12 --
---------------------
+----- * Problem 12 --
+---------------------
 -- Use the above to construct a SAT solver for any Formula.
 -- i.e. compose to-nnf, NNF-to-CNF, and the CNF SAT solver.
