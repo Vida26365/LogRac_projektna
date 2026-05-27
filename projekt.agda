@@ -2,7 +2,7 @@
 
 module projekt where
 
-open import Data.Nat using (ℕ; zero; suc; pred; _+_; _⊔_)
+open import Data.Nat using (ℕ; zero; suc; pred; _+_; _⊔_; _≤?_)
 open import Relation.Binary using (Decidable; DecidableEquality)
 -- open import Data.List.Relation.Unary.Any using (Any; any?)
 -- open import Data.List.Relation.Unary.All using (All; all?)
@@ -230,10 +230,80 @@ data SatResult (cnf : CNF) : Set where
 sat-solver : (cnf : CNF) → SatResult cnf
 sat-solver ϕ = {!  !}
 
-all-literals : (cnf : CNF) → Literals
-all-literals [] = []
-all-literals ([] ∷ cnf) = all-literals cnf
-all-literals ((x ∷ xs) ∷ cnf) = {!   !}
+
+---------------  Vse to je za filterDuplicates, da lahko dobimo literals
+PosLiterals = List Literal
+NegLiterals = List Literal
+
+SortPosLiterals = List Literal
+SortNegLiterals = List Literal
+
+pos-sorted-insert : (x : ℕ) → (ltrs : SortPosLiterals) → SortPosLiterals -- sortirani pozitivni literali
+pos-sorted-insert x [] = Pos x ∷ []
+pos-sorted-insert x (Neg y ∷ litrs) = pos-sorted-insert x litrs 
+pos-sorted-insert x (Pos y ∷ litrs) with x ≤? y
+... | yes _ = Pos x ∷ Pos y ∷ litrs
+... | no _ = Pos y ∷ pos-sorted-insert x litrs
+
+neg-sorted-insert : (x : ℕ) → (ltrs : SortNegLiterals) → SortNegLiterals -- sortirani negativni literali
+neg-sorted-insert x [] = Neg x ∷ []
+neg-sorted-insert x (Pos y ∷ litrs) = neg-sorted-insert x litrs 
+neg-sorted-insert x (Neg y ∷ litrs) with x ≤? y
+... | yes _ = Neg x ∷ Neg y ∷ litrs
+... | no _ = Neg y ∷ neg-sorted-insert x litrs
+
+pos-sort : (litrs : Literals) → SortPosLiterals
+pos-sort [] = []
+pos-sort (Pos x ∷ litrs) = pos-sorted-insert x (pos-sort litrs)
+pos-sort (Neg x ∷ litrs) = pos-sort litrs
+
+neg-sort : (litrs : Literals) → SortNegLiterals
+neg-sort [] = []
+neg-sort (Neg x ∷ litrs) = neg-sorted-insert x (neg-sort litrs)
+neg-sort (Pos x ∷ litrs) = neg-sort litrs
+
+sort-literals : (litr : Literals) → PosLiterals × NegLiterals
+sort-literals litr = (pos-sort litr) , (neg-sort litr)
+
+all-literals' : (cnf : CNF) → Literals -- nefiltrirani
+all-literals' [] = []
+all-literals' ([] ∷ cnf) = all-literals' cnf
+all-literals' ((x ∷ xs) ∷ cnf) = x ∷ all-literals' (xs ∷ cnf)
+
+-- filter-duplicates : SortLiterals → noDupLiterals
+
+-- literals : CNF -> Literals
+-- literals = filter-duplicates (all-literals' cnf)
+
+------------------
+
+------------------ Potrebno je narediti propagatePurify
+find-units : (cnf : CNF) → Units -- findUnits
+find-units [] = []
+find-units ([] ∷ cnf) = find-units cnf
+find-units ((x ∷ []) ∷ cnf) = x ∷ (find-units cnf)
+find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
+
+reduce : (asg : Assignment) → (dis : Disjunct) → Disjunct
+reduce asg [] = []
+reduce asg (x ∷ dis) with (eval-literal asg x)
+... | just false = dis
+... | just true = []
+... | nothing = x ∷ dis
+
+reduce-cnf : (asg : Assignment) → (cnf : CNF) → CNF
+reduce-cnf asg [] = []
+reduce-cnf asg (x ∷ cnf) = reduce asg x ∷ reduce-cnf asg cnf
+
+units-to-assign : Units → Assignment
+units-to-assign [] = []
+units-to-assign (Pos x ∷ unt) = (( x , true)) ∷ units-to-assign unt
+units-to-assign (Neg x ∷ unt) = ( x , false ) ∷ units-to-assign unt
+
+unit-propagate : (cnf : CNF) → CNF × Units
+unit-propagate cnf  = ( reduce-cnf (units-to-assign units) cnf , units) where units = find-units cnf
+
+------------------
 
 contradiction : (cnf : CNF) → (asg : Assignment) → Bool
 contradiction [] asg = true
@@ -241,17 +311,18 @@ contradiction (x ∷ cnf) asg with (eval-disjunct asg x)
 ... | just b = not b ∨ contradiction cnf asg
 ... | nothing = contradiction cnf asg
 
-find-units : (cnf : CNF) → Units -- list unitov
-find-units [] = []
-find-units ([] ∷ cnf) = find-units cnf
-find-units ((x ∷ []) ∷ cnf) = x ∷ (find-units cnf)
-find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
 
--- find-unit-clause : (cnf : CNF) → Maybe Formula
--- find-unit-clause ϕ = {!   !}
 
--- choose nekej
--- preveri unit clause (while)
+------ Katere funkcije mankajo?
+-- propagatePurify
+-- propagatePurify'
+-- pure literals (nism zihr kaj to bi mogl bit)
+-- filterDuplicates
+-- clauseSat (nism zihr kaj bi to mogl bit zares)
+-- check
+------------------
+
+
 
 -- * Problem 10 --
 ------------------
