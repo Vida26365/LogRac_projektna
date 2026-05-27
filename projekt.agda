@@ -203,9 +203,9 @@ CNF = List Disjunct
 litd : Literal → Disjunct
 litd x = x ∷ []
 
------------------
--- * Problem 8 --
------------------
+---------------
+-- Problem 8 --
+---------------
 -- Define an evaluation function eval-cnf : Assignment → CNF → Maybe Bool
 -- assigning to each assignment of variables and CNF formula its truth value.
 
@@ -229,12 +229,38 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 --         or a proof that no such assignment exists.
 -- Note: a more complex implementation (e.g. DPLL) will be graded higher.
 
+Units = List Literal -- list unitov
+Literals = List Literal -- list literalov
+
 data SatResult (cnf : CNF) : Set where
   sat   : (asg : Assignment) → eval-cnf asg cnf ≡ just true → SatResult cnf
   unsat : (∀ (asg : Assignment) → eval-cnf asg cnf ≢ just true) → SatResult cnf
 
--- sat-solver : (cnf : CNF) → SatResult cnf
--- sat-solver ϕ = {!!}
+sat-solver : (cnf : CNF) → SatResult cnf
+sat-solver ϕ = {!  !}
+
+all-literals : (cnf : CNF) → Literals
+all-literals [] = []
+all-literals ([] ∷ cnf) = all-literals cnf
+all-literals ((x ∷ xs) ∷ cnf) = {!   !}
+
+contradiction : (cnf : CNF) → (asg : Assignment) → Bool
+contradiction [] asg = true
+contradiction (x ∷ cnf) asg with (eval-disjunct asg x)
+... | just b = not b ∨ contradiction cnf asg
+... | nothing = contradiction cnf asg
+
+find-units : (cnf : CNF) → Units -- list unitov
+find-units [] = []
+find-units ([] ∷ cnf) = find-units cnf
+find-units ((x ∷ []) ∷ cnf) = x ∷ (find-units cnf)
+find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
+
+-- find-unit-clause : (cnf : CNF) → Maybe Formula
+-- find-unit-clause ϕ = {!   !}
+
+-- choose nekej
+-- preveri unit clause (while)
 
 --------------------
 -- * Problem 10 --
