@@ -46,6 +46,8 @@ cnf-unsat2 = (Pos 0 ∷ Pos 1 ∷ [])
            ∷ (Neg 0 ∷ Neg 1 ∷ [])
            ∷ []
 
+test-partial = (Pos 0 ∷ Neg 0 ∷ []) ∷ []
+
 sat-eval-check : Maybe Bool
 sat-eval-check with sat test-formula
 ... | just asg = eval asg test-formula

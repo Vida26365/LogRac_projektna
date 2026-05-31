@@ -12,12 +12,14 @@ open import Data.Maybe using (Maybe; nothing; just; _>>=_; _<∣>_)
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong; subst; _≢_)
 open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
-open import Data.Product using (_×_; _,_; proj₁; proj₂)
+open import Data.Product using (Σ; ∃; _×_; _,_; proj₁; proj₂)
 open import Data.List using (List; []; _∷_; head; _++_; map; length; mapMaybe)
 open import Level using (0ℓ)
 open import Effect.Functor using (RawFunctor)   -- or Effect.Functor on ≥2.0
 open import Data.Maybe.Effectful using (functor) -- or Data.Maybe.Effectful
 open RawFunctor (functor {0ℓ}) using (_<$>_)
+open import Data.Sum using (_⊎_; inj₁; inj₂)
+
 
 -- open import Data.Empty using (⊥)
 
@@ -212,17 +214,41 @@ litd x = x ∷ []
 -- Define an evaluation function eval-cnf : Assignment → CNF → Maybe Bool
 -- assigning to each assignment of variables and CNF formula its truth value.
 
+-- Originally: Partial assignments are always nothing
+-- eval-disjunct : Assignment → Disjunct → Maybe Bool
+-- eval-disjunct asg []      = just false
+-- eval-disjunct asg (x ∷ p) with eval-literal asg x | eval-disjunct asg p
+-- ... | just a  | just b  = just (a ∨ b)
+-- ... | _       | _       = nothing
+
+-- eval-cnf : Assignment → CNF → Maybe Bool
+-- eval-cnf asg []      = just true
+-- eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
+-- ... | just a  | just b  = just (a ∧ b)
+-- ... | _       | _       = nothing
+
+-- For easier DPLL verification, we consider an incomplete assignment with extraneous variables as true, e.g.
+-- assigning (x₀ = true) means that (x₀ ∨ x₁) evaluates to true
+
+or-maybe : Maybe Bool → Maybe Bool → Maybe Bool
+or-maybe (just true)  _           = just true
+or-maybe _            (just true) = just true
+or-maybe (just false) y           = y
+or-maybe nothing      _           = nothing
+
+and-maybe : Maybe Bool → Maybe Bool → Maybe Bool
+and-maybe (just false) _            = just false
+and-maybe _            (just false) = just false
+and-maybe (just true)  y            = y
+and-maybe nothing      _            = nothing
+
 eval-disjunct : Assignment → Disjunct → Maybe Bool
 eval-disjunct asg []      = just false
-eval-disjunct asg (x ∷ p) with eval-literal asg x | eval-disjunct asg p
-... | just a  | just b  = just (a ∨ b)
-... | _       | _       = nothing
+eval-disjunct asg (x ∷ p) = or-maybe (eval-literal asg x) (eval-disjunct asg p)
 
 eval-cnf : Assignment → CNF → Maybe Bool
 eval-cnf asg []      = just true
-eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
-... | just a  | just b  = just (a ∧ b)
-... | _       | _       = nothing
+eval-cnf asg (d ∷ p) = and-maybe (eval-disjunct asg d) (eval-cnf asg p)
 
 -- * Problem 9  - DPLL
 -----------------
@@ -321,7 +347,27 @@ choose-lit ((x ∷ _) ∷ _) = just x
 -- DPLL implementation itself
 -- Left out pure literal elimination since we mentioned in class it doesn't actually speed things up in practice
 
-dpll-helper : ℕ → Assignment → CNF → Maybe Assignment
+Sat : CNF → Set
+Sat ϕ = ∃ λ asg → eval-cnf asg ϕ ≡ just true
+
+-- dpll-helper : ℕ → (asg : Assignment) → (ϕ : CNF) → Maybe (Sat ϕ)
+-- dpll-helper _ asg [] = just (asg , refl)
+-- dpll-helper zero asg ϕ = nothing
+-- dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
+-- ... | true , _ = nothing
+-- ... | false , ϕ' , just l with dpll-helper n (lit→pair l ∷ asg) ϕ'
+-- ...   | nothing = nothing
+-- ...   | just (a , p) = just (a , {!!})
+-- dpll-helper (suc n) asg ϕ | false , ϕ' , nothing with choose-lit ϕ'
+-- ...   | nothing = nothing
+-- ...   | just l = let l' = neg-lit l in
+--        mapM (λ { (a , p) → a , {!!} })
+--                  (dpll-helper n (lit→pair l ∷ asg) (reduce-cnf (units-to-assign (l ∷ [])) ϕ'))
+--        <∣>
+--        mapM (λ { (a , p) → a , {!!} })
+--                  (dpll-helper n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ'))
+
+dpll-helper : ℕ → (asg : Assignment) → (ϕ : CNF) → Maybe Assignment
 dpll-helper _ asg [] = just asg -- Empty conjunction is true
 dpll-helper zero asg ϕ = nothing -- Out of fuel
 dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
@@ -335,6 +381,14 @@ dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
   neg = dpll-helper n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ')
   in pos <∣> neg
 
+-- The unverified version used complete-assignment with the previous eval to pick arbitrary variables
+dpll : CNF → Maybe Assignment
+dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
+
+-- dpll : (ϕ : CNF) → Maybe (Sat ϕ)
+-- dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
+
+-- We previously used complete-assignment with the stricter eval
 max-var-lit : Literal → ℕ
 max-var-lit (Pos n) = n
 max-var-lit (Neg n) = n
@@ -357,10 +411,6 @@ complete-assignment (suc n) asg with (suc n) ∈? asg
 ... | yes _ = complete-assignment n asg
 ... | no  _ = complete-assignment n ((suc n , false) ∷ asg)
 
-dpll : CNF → Maybe Assignment
-dpll ϕ with (dpll-helper (length (all-literals' ϕ)) [] ϕ)
-... | nothing = nothing
-... | just asg = just (complete-assignment (max-var-cnf ϕ) asg)
 
 -- * Problem 10 - SAT correctness
 ------------------
@@ -410,3 +460,7 @@ nnf-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 
 sat : Formula → Maybe Assignment
 sat ϕ = dpll (nnf-to-cnf (to-nnf ϕ))
+
+-- sat : Formula → Maybe Assignment
+-- sat ϕ = mapM proj₁ (dpll (nnf-to-cnf (to-nnf ϕ)))
+
