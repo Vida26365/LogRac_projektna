@@ -7,7 +7,7 @@ open import Relation.Binary using (Decidable; DecidableEquality)
 -- open import Data.List.Relation.Unary.Any using (Any; any?)
 -- open import Data.List.Relation.Unary.All using (All; all?)
 open import Relation.Nullary using (Dec; yes; no; ¬_; ¬?)
-open import Data.Maybe using (Maybe; nothing; just)
+open import Data.Maybe using (Maybe; nothing; just; _>>=_; _<∣>_)
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong; subst; _≢_)
 open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
@@ -299,17 +299,41 @@ reduce asg (x ∷ dis) with (eval-literal asg x)
 ... | just true = []
 ... | nothing = x ∷ dis
 
+-- This needs to drop satisfied clauses
+-- reduce-cnf : (asg : Assignment) → (cnf : CNF) → CNF
+-- reduce-cnf asg [] = []
+-- reduce-cnf asg (x ∷ cnf) = reduce asg x ∷ reduce-cnf asg cnf
+
 reduce-cnf : (asg : Assignment) → (cnf : CNF) → CNF
 reduce-cnf asg [] = []
-reduce-cnf asg (x ∷ cnf) = reduce asg x ∷ reduce-cnf asg cnf
+reduce-cnf asg (d ∷ cnf) with eval-disjunct asg d
+... | just true = reduce-cnf asg cnf                  -- satisfied → drop the clause
+... | _         = reduce asg d ∷ reduce-cnf asg cnf    -- else reduce literals in place
 
 units-to-assign : Units → Assignment
 units-to-assign [] = []
 units-to-assign (Pos x ∷ unt) = (( x , true)) ∷ units-to-assign unt
 units-to-assign (Neg x ∷ unt) = ( x , false ) ∷ units-to-assign unt
 
-unit-propagate : (cnf : CNF) → CNF × Units
-unit-propagate cnf  = ( reduce-cnf (units-to-assign units) cnf , units) where units = find-units cnf
+-- Has a double assignment bug
+units-propagate : (cnf : CNF) → CNF × Units
+units-propagate cnf  = ( reduce-cnf (units-to-assign units) cnf , units) where units = find-units cnf
+
+lit→pair : Literal → ℕ × Bool
+lit→pair (Pos x) = x , true
+lit→pair (Neg x) = x , false
+
+-- Single unit at a time
+find-unit : (cnf : CNF) → Maybe Literal
+find-unit [] = nothing
+find-unit ([] ∷ cnf) = find-unit cnf
+find-unit ((x ∷ []) ∷ cnf) = just x            -- first singleton clause → done
+find-unit ((x ∷ _ ∷ xs) ∷ cnf) = find-unit cnf
+
+unit-propagate : (cnf : CNF) → CNF × Maybe Literal
+unit-propagate cnf with find-unit cnf
+... | nothing = cnf , nothing                              -- no unit, formula unchanged
+... | just l  = reduce-cnf ((lit→pair l) ∷ []) cnf , just l
 
 ------------------
 
@@ -324,38 +348,55 @@ has-empty-clause [] = false
 has-empty-clause ([] ∷ _)        = true -- empty disjunct found → conflict
 has-empty-clause ((_ ∷ _) ∷ cnf) = has-empty-clause cnf
 
+choose-lit : (cnf : CNF) → Maybe Literal
+choose-lit [] = nothing
+choose-lit ([] ∷ cnf) = choose-lit cnf
+choose-lit ((x ∷ _) ∷ _) = just x
 
------- Katere funkcije mankajo?
--- propagatePurify
--- propagatePurify'
--- pure literals (nism zihr kaj to bi mogl bit)
--- filterDuplicates
--- clauseSat (nism zihr kaj bi to mogl bit zares)
--- check
-------------------
+try-both-1 : ℕ → Assignment → Literal → CNF → Maybe Assignment
+dpll-helper-1 : ℕ → Assignment → CNF → Maybe Assignment
+
+dpll-helper-1 _ asg [] = just asg
+dpll-helper-1 zero _ _ = nothing
+dpll-helper-1 (suc n) asg ϕ with unit-propagate ϕ , has-empty-clause ϕ
+... | (_ , _) , true       = nothing -- found empty clause, contradiction
+... | (ϕ' , just l) , _     = dpll-helper-1 n (lit→pair l ∷ asg) ϕ' -- unit found, assign and recurse
+... | (ϕ' , nothing) , _  with choose-lit ϕ' -- no units, choose a literal
+...   | nothing = just asg
+...   | just l  = try-both-1 n asg l ϕ
+
+try-both-1 n asg l ϕ with dpll-helper-1 n (lit→pair l ∷ asg)
+                              (reduce-cnf (units-to-assign (l ∷ [])) ϕ)
+... | just r  = just r                                    -- l = true satisfied it
+... | nothing = dpll-helper-1 n (lit→pair l' ∷ asg)
+                              (reduce-cnf (units-to-assign (l' ∷ [])) ϕ)  -- try l = false
+                where l' = neg-lit l
 
 dpll-helper : ℕ → Assignment → CNF → Maybe Assignment
-dpll-helper _ asg [] = just asg -- All clauses satisfied
-dpll-helper zero _ _ = nothing  -- Out of fuel
-dpll-helper (suc n) asg ϕ with (unit-propagate ϕ)
-... | ϕ' , [] = {!!}
-... | ϕ' , us = dpll-helper n (units-to-assign us ++ asg) ϕ' -- Assign unit clauses
+dpll-helper zero asg ϕ = nothing
+dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
+... | true , _ = nothing 
 
 dpll : CNF → Maybe Assignment
-dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
+dpll ϕ = dpll-helper-1 (length (all-literals' ϕ)) [] ϕ
 
-þ = (Pos 0 ∷ [])
-         ∷ (Neg 0 ∷ Pos 1 ∷ [])
-         ∷ (Pos 1 ∷ Pos 2 ∷ [])
-         ∷ []
+cnf-contra = (Pos 0 ∷ []) ∷ (Neg 0 ∷ []) ∷ []
+cnf-unit = (Pos 0 ∷ []) ∷ []
+cnf-or = (Pos 0 ∷ Pos 1 ∷ []) ∷ []
+cnf-chain = (Pos 0 ∷ Pos 1 ∷ [])
+          ∷ (Neg 0 ∷ [])
+          ∷ (Neg 1 ∷ Pos 2 ∷ [])
+          ∷ []
+cnf-unsat2 = (Pos 0 ∷ Pos 1 ∷ [])
+           ∷ (Pos 0 ∷ Neg 1 ∷ [])
+           ∷ (Neg 0 ∷ Pos 1 ∷ [])
+           ∷ (Neg 0 ∷ Neg 1 ∷ [])
+           ∷ []
 
-contra = (Pos 0 ∷ [])
-       ∷ (Neg 0 ∷ [])
-       ∷ []
 
-⟡ = (Pos 0 ∷ [])
-    ∷ (Pos 1 ∷ [])
-    ∷ []
+  
+
+
 -- * Problem 10 - SAT correctness
 ------------------
 -- Show that the SAT solver is correct, if that is not obvious from the output type.
