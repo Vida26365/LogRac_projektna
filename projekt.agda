@@ -235,62 +235,10 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 Units = List Literal -- list unitov
 Literals = List Literal -- list literalov
 
-data SatResult (cnf : CNF) : Set where
-  sat   : (asg : Assignment) → eval-cnf asg cnf ≡ just true → SatResult cnf
-  unsat : (∀ (asg : Assignment) → eval-cnf asg cnf ≢ just true) → SatResult cnf
-
----------------  Vse to je za filterDuplicates, da lahko dobimo literals
-PosLiterals = List Literal
-NegLiterals = List Literal
-
-SortPosLiterals = List Literal
-SortNegLiterals = List Literal
-
-pos-sorted-insert : (x : ℕ) → (ltrs : SortPosLiterals) → SortPosLiterals -- sortirani pozitivni literali
-pos-sorted-insert x [] = Pos x ∷ []
-pos-sorted-insert x (Neg y ∷ litrs) = pos-sorted-insert x litrs 
-pos-sorted-insert x (Pos y ∷ litrs) with x ≤? y
-... | yes _ = Pos x ∷ Pos y ∷ litrs
-... | no _ = Pos y ∷ pos-sorted-insert x litrs
-
-neg-sorted-insert : (x : ℕ) → (ltrs : SortNegLiterals) → SortNegLiterals -- sortirani negativni literali
-neg-sorted-insert x [] = Neg x ∷ []
-neg-sorted-insert x (Pos y ∷ litrs) = neg-sorted-insert x litrs 
-neg-sorted-insert x (Neg y ∷ litrs) with x ≤? y
-... | yes _ = Neg x ∷ Neg y ∷ litrs
-... | no _ = Neg y ∷ neg-sorted-insert x litrs
-
-pos-sort : (litrs : Literals) → SortPosLiterals
-pos-sort [] = []
-pos-sort (Pos x ∷ litrs) = pos-sorted-insert x (pos-sort litrs)
-pos-sort (Neg x ∷ litrs) = pos-sort litrs
-
-neg-sort : (litrs : Literals) → SortNegLiterals
-neg-sort [] = []
-neg-sort (Neg x ∷ litrs) = neg-sorted-insert x (neg-sort litrs)
-neg-sort (Pos x ∷ litrs) = neg-sort litrs
-
-sort-literals : (litr : Literals) → PosLiterals × NegLiterals
-sort-literals litr = (pos-sort litr) , (neg-sort litr)
-
 all-literals' : (cnf : CNF) → Literals -- nefiltrirani
 all-literals' [] = []
 all-literals' ([] ∷ cnf) = all-literals' cnf
 all-literals' ((x ∷ xs) ∷ cnf) = x ∷ all-literals' (xs ∷ cnf)
-
--- filter-duplicates : SortLiterals → noDupLiterals
-
--- literals : CNF -> Literals
--- literals = filter-duplicates (all-literals' cnf)
-
-------------------
-
------------------- Potrebno je narediti propagatePurify
-find-units : (cnf : CNF) → Units -- findUnits
-find-units [] = []
-find-units ([] ∷ cnf) = find-units cnf
-find-units ((x ∷ []) ∷ cnf) = x ∷ (find-units cnf)
-find-units ((x ∷ _ ∷ xs) ∷ cnf) = find-units cnf
 
 reduce : (asg : Assignment) → (dis : Disjunct) → Disjunct
 reduce asg [] = []
@@ -315,9 +263,6 @@ units-to-assign [] = []
 units-to-assign (Pos x ∷ unt) = (( x , true)) ∷ units-to-assign unt
 units-to-assign (Neg x ∷ unt) = ( x , false ) ∷ units-to-assign unt
 
--- Has a double assignment bug
-units-propagate : (cnf : CNF) → CNF × Units
-units-propagate cnf  = ( reduce-cnf (units-to-assign units) cnf , units) where units = find-units cnf
 
 lit→pair : Literal → ℕ × Bool
 lit→pair (Pos x) = x , true
@@ -337,12 +282,6 @@ unit-propagate cnf with find-unit cnf
 
 ------------------
 
-contradiction : (cnf : CNF) → (asg : Assignment) → Bool
-contradiction [] asg = true
-contradiction (x ∷ cnf) asg with (eval-disjunct asg x)
-... | just b = not b ∨ contradiction cnf asg
-... | nothing = contradiction cnf asg
-
 has-empty-clause : CNF → Bool
 has-empty-clause [] = false
 has-empty-clause ([] ∷ _)        = true -- empty disjunct found → conflict
@@ -353,6 +292,7 @@ choose-lit [] = nothing
 choose-lit ([] ∷ cnf) = choose-lit cnf
 choose-lit ((x ∷ _) ∷ _) = just x
 
+------------------- Attempt 1 with nested recursion
 try-both-1 : ℕ → Assignment → Literal → CNF → Maybe Assignment
 dpll-helper-1 : ℕ → Assignment → CNF → Maybe Assignment
 
@@ -362,7 +302,7 @@ dpll-helper-1 (suc n) asg ϕ with unit-propagate ϕ , has-empty-clause ϕ
 ... | (_ , _) , true       = nothing -- found empty clause, contradiction
 ... | (ϕ' , just l) , _     = dpll-helper-1 n (lit→pair l ∷ asg) ϕ' -- unit found, assign and recurse
 ... | (ϕ' , nothing) , _  with choose-lit ϕ' -- no units, choose a literal
-...   | nothing = just asg
+...   | nothing = just asg -- no variables left, assignment satisfies
 ...   | just l  = try-both-1 n asg l ϕ
 
 try-both-1 n asg l ϕ with dpll-helper-1 n (lit→pair l ∷ asg)
@@ -371,14 +311,35 @@ try-both-1 n asg l ϕ with dpll-helper-1 n (lit→pair l ∷ asg)
 ... | nothing = dpll-helper-1 n (lit→pair l' ∷ asg)
                               (reduce-cnf (units-to-assign (l' ∷ [])) ϕ)  -- try l = false
                 where l' = neg-lit l
+-------------------
+
 
 dpll-helper : ℕ → Assignment → CNF → Maybe Assignment
+
+-- Empty conjunction is true
+dpll-helper _ asg [] = just asg
+-- Out of fuel
 dpll-helper zero asg ϕ = nothing
+
 dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
-... | true , _ = nothing 
+-- Empty clause, unsat
+... | true , _ = nothing
+-- Unit found, recurse
+... | false , ϕ' , just l = dpll-helper n (lit→pair l ∷ asg) ϕ'
+-- No unit, choose literal and branch
+... | false , ϕ' , nothing with choose-lit ϕ'
+...   | nothing = just asg
+...   | just l = let
+  l' = neg-lit l
+  pos = dpll-helper n (lit→pair l  ∷ asg) (reduce-cnf (units-to-assign (l  ∷ [])) ϕ')
+  neg = dpll-helper n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ')
+  in pos <∣> neg
+
+dpll-1 : CNF → Maybe Assignment
+dpll-1 ϕ = dpll-helper-1 (length (all-literals' ϕ)) [] ϕ
 
 dpll : CNF → Maybe Assignment
-dpll ϕ = dpll-helper-1 (length (all-literals' ϕ)) [] ϕ
+dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
 
 cnf-contra = (Pos 0 ∷ []) ∷ (Neg 0 ∷ []) ∷ []
 cnf-unit = (Pos 0 ∷ []) ∷ []
