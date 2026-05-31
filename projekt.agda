@@ -350,22 +350,22 @@ choose-lit ((x ∷ _) ∷ _) = just x
 Sat : CNF → Set
 Sat ϕ = ∃ λ asg → eval-cnf asg ϕ ≡ just true
 
--- dpll-helper : ℕ → (asg : Assignment) → (ϕ : CNF) → Maybe (Sat ϕ)
--- dpll-helper _ asg [] = just (asg , refl)
--- dpll-helper zero asg ϕ = nothing
--- dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
--- ... | true , _ = nothing
--- ... | false , ϕ' , just l with dpll-helper n (lit→pair l ∷ asg) ϕ'
--- ...   | nothing = nothing
--- ...   | just (a , p) = just (a , {!!})
--- dpll-helper (suc n) asg ϕ | false , ϕ' , nothing with choose-lit ϕ'
--- ...   | nothing = nothing
--- ...   | just l = let l' = neg-lit l in
---        mapM (λ { (a , p) → a , {!!} })
---                  (dpll-helper n (lit→pair l ∷ asg) (reduce-cnf (units-to-assign (l ∷ [])) ϕ'))
---        <∣>
---        mapM (λ { (a , p) → a , {!!} })
---                  (dpll-helper n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ'))
+dpll-helper-v : ℕ → (asg : Assignment) → (ϕ : CNF) → Maybe (Sat ϕ)
+dpll-helper-v _ asg [] = just (asg , refl)
+dpll-helper-v zero asg ϕ = nothing
+dpll-helper-v (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
+... | true , _ = nothing
+... | false , ϕ' , just l with dpll-helper-v n (lit→pair l ∷ asg) ϕ'
+...   | nothing = nothing
+...   | just (a , p) = just (a , {!!})
+dpll-helper-v (suc n) asg ϕ | false , ϕ' , nothing with choose-lit ϕ'
+...   | nothing = nothing
+...   | just l = let l' = neg-lit l in
+       mapM (λ { (a , p) → a , {!!} })
+                 (dpll-helper-v n (lit→pair l ∷ asg) (reduce-cnf (units-to-assign (l ∷ [])) ϕ'))
+       <∣>
+       mapM (λ { (a , p) → a , {!!} })
+                 (dpll-helper-v n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ'))
 
 dpll-helper : ℕ → (asg : Assignment) → (ϕ : CNF) → Maybe Assignment
 dpll-helper _ asg [] = just asg -- Empty conjunction is true
