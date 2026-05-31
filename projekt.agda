@@ -8,11 +8,17 @@ open import Relation.Binary using (Decidable; DecidableEquality)
 -- open import Data.List.Relation.Unary.All using (All; all?)
 open import Relation.Nullary using (Dec; yes; no; ¬_; ¬?)
 open import Data.Maybe using (Maybe; nothing; just; _>>=_; _<∣>_)
+  renaming (map to mapM)
 import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong; subst; _≢_)
 open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
-open import Data.List using (List; []; _∷_; head; _++_; map; length)
+open import Data.List using (List; []; _∷_; head; _++_; map; length; mapMaybe)
+open import Level using (0ℓ)
+open import Effect.Functor using (RawFunctor)   -- or Effect.Functor on ≥2.0
+open import Data.Maybe.Effectful using (functor) -- or Data.Maybe.Effectful
+open RawFunctor (functor {0ℓ}) using (_<$>_)
+
 -- open import Data.Empty using (⊥)
 
 -- * Problem 1  - Formula type
@@ -31,7 +37,6 @@ data Formula : Set where
 
 infixr 6 _∧A_
 infixr 5 _∨A_
-
 
 -- * Problem 2  - NNF type
 -----------------
@@ -57,7 +62,6 @@ data NNF : Set where
   lit  : Literal → NNF
   _∧An_ : NNF → NNF → NNF
   _∨An_ : NNF → NNF → NNF
-
 
 -- * Problem 3  - to-nnf
 -----------------
@@ -126,7 +130,6 @@ module Assoc (K : DecType) (V : Set) where
   ... | yes (∈-there p) = x ∷ ( kvs [ k ]≔ v )
   ... | no p = ((k , v)) ∷ kvs 
 
-
 -- * Problem 5  - eval formulas
 -----------------
 -- Define an evaluation function eval : Assignment → Formula → Maybe Bool
@@ -154,7 +157,6 @@ open Assoc record { carr = ℕ ; test-≡ = _eqn_ } Bool
 
 Assignment : Set 
 Assignment = Assoc
-
 
 eval : Assignment → Formula → Maybe Bool
 eval asg (Var x) = asg ‼ x
@@ -199,7 +201,6 @@ eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 --            | Literal ∨ Disjunct
 --   CNF      → Disjunct ∨ CNF
 
-
 Disjunct = List Literal
 CNF = List Disjunct
 
@@ -226,7 +227,7 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 -- * Problem 9  - DPLL
 -----------------
 -- Write a SAT solver for CNF formulas.
--- Output: either an assignment such that eval-cnf asg cnf ≡ just true,
+-- Output: either an assignment such that eval-cnf asg ϕ ≡ just true,
 --         or a proof that no such assignment exists.
 -- Note: a more complex implementation (e.g. DPLL) will be graded higher.
 
@@ -235,133 +236,136 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 Units = List Literal -- list unitov
 Literals = List Literal -- list literalov
 
-all-literals' : (cnf : CNF) → Literals -- nefiltrirani
+----------------  Vse to je za filterDuplicates, da lahko dobimo literals
+PosLiterals = List Literal
+NegLiterals = List Literal
+
+SortPosLiterals = List Literal
+SortNegLiterals = List Literal
+
+pos-sorted-insert : (x : ℕ) → (ltrs : SortPosLiterals) → SortPosLiterals -- sortirani pozitivni literali
+pos-sorted-insert x [] = Pos x ∷ []
+pos-sorted-insert x (Neg y ∷ litrs) = pos-sorted-insert x litrs 
+pos-sorted-insert x (Pos y ∷ litrs) with x ≤? y
+... | yes _ = Pos x ∷ Pos y ∷ litrs
+... | no _ = Pos y ∷ pos-sorted-insert x litrs
+
+neg-sorted-insert : (x : ℕ) → (ltrs : SortNegLiterals) → SortNegLiterals -- sortirani negativni literali
+neg-sorted-insert x [] = Neg x ∷ []
+neg-sorted-insert x (Pos y ∷ litrs) = neg-sorted-insert x litrs 
+neg-sorted-insert x (Neg y ∷ litrs) with x ≤? y
+... | yes _ = Neg x ∷ Neg y ∷ litrs
+... | no _ = Neg y ∷ neg-sorted-insert x litrs
+
+pos-sort : (litrs : Literals) → SortPosLiterals
+pos-sort [] = []
+pos-sort (Pos x ∷ litrs) = pos-sorted-insert x (pos-sort litrs)
+pos-sort (Neg x ∷ litrs) = pos-sort litrs
+
+neg-sort : (litrs : Literals) → SortNegLiterals
+neg-sort [] = []
+neg-sort (Neg x ∷ litrs) = neg-sorted-insert x (neg-sort litrs)
+neg-sort (Pos x ∷ litrs) = neg-sort litrs
+
+sort-literals : (litr : Literals) → PosLiterals × NegLiterals
+sort-literals litr = (pos-sort litr) , (neg-sort litr)
+
+all-literals' : (ϕ : CNF) → Literals -- nefiltrirani
 all-literals' [] = []
-all-literals' ([] ∷ cnf) = all-literals' cnf
-all-literals' ((x ∷ xs) ∷ cnf) = x ∷ all-literals' (xs ∷ cnf)
+all-literals' ([] ∷ ϕ) = all-literals' ϕ
+all-literals' ((x ∷ xs) ∷ ϕ) = x ∷ all-literals' (xs ∷ ϕ)
 
-reduce : (asg : Assignment) → (dis : Disjunct) → Disjunct
-reduce asg [] = []
-reduce asg (x ∷ dis) with (eval-literal asg x)
-... | just false = dis
-... | just true = []
-... | nothing = x ∷ dis
+reduce-disjunct : Assignment → Disjunct → Maybe Disjunct
+reduce-disjunct asg [] = just []
+reduce-disjunct asg (x ∷ dis) with eval-literal asg x
+... | just true  = nothing
+... | just false = reduce-disjunct asg dis
+... | nothing with reduce-disjunct asg dis
+...   | nothing  = nothing
+...   | just dis' = just (x ∷ dis') -- skip unassigned terms
 
--- This needs to drop satisfied clauses
--- reduce-cnf : (asg : Assignment) → (cnf : CNF) → CNF
--- reduce-cnf asg [] = []
--- reduce-cnf asg (x ∷ cnf) = reduce asg x ∷ reduce-cnf asg cnf
-
-reduce-cnf : (asg : Assignment) → (cnf : CNF) → CNF
-reduce-cnf asg [] = []
-reduce-cnf asg (d ∷ cnf) with eval-disjunct asg d
-... | just true = reduce-cnf asg cnf                  -- satisfied → drop the clause
-... | _         = reduce asg d ∷ reduce-cnf asg cnf    -- else reduce literals in place
+reduce-cnf : Assignment → CNF → CNF
+reduce-cnf asg = mapMaybe (reduce-disjunct asg)
 
 units-to-assign : Units → Assignment
 units-to-assign [] = []
-units-to-assign (Pos x ∷ unt) = (( x , true)) ∷ units-to-assign unt
-units-to-assign (Neg x ∷ unt) = ( x , false ) ∷ units-to-assign unt
-
+units-to-assign (Pos x ∷ unt) = (x , true ) ∷ units-to-assign unt
+units-to-assign (Neg x ∷ unt) = (x , false) ∷ units-to-assign unt
 
 lit→pair : Literal → ℕ × Bool
 lit→pair (Pos x) = x , true
 lit→pair (Neg x) = x , false
 
 -- Single unit at a time
-find-unit : (cnf : CNF) → Maybe Literal
+find-unit : (ϕ : CNF) → Maybe Literal
 find-unit [] = nothing
-find-unit ([] ∷ cnf) = find-unit cnf
-find-unit ((x ∷ []) ∷ cnf) = just x            -- first singleton clause → done
-find-unit ((x ∷ _ ∷ xs) ∷ cnf) = find-unit cnf
+find-unit ([] ∷ ϕ) = find-unit ϕ
+find-unit ((x ∷ []) ∷ ϕ) = just x
+find-unit ((x ∷ _ ∷ xs) ∷ ϕ) = find-unit ϕ
 
-unit-propagate : (cnf : CNF) → CNF × Maybe Literal
-unit-propagate cnf with find-unit cnf
-... | nothing = cnf , nothing                              -- no unit, formula unchanged
-... | just l  = reduce-cnf ((lit→pair l) ∷ []) cnf , just l
-
-------------------
+unit-propagate : (ϕ : CNF) → CNF × Maybe Literal
+unit-propagate ϕ with find-unit ϕ
+... | nothing = ϕ , nothing
+... | just l  = reduce-cnf ((lit→pair l) ∷ []) ϕ , just l
 
 has-empty-clause : CNF → Bool
 has-empty-clause [] = false
-has-empty-clause ([] ∷ _)        = true -- empty disjunct found → conflict
-has-empty-clause ((_ ∷ _) ∷ cnf) = has-empty-clause cnf
+has-empty-clause ([] ∷ _)      = true -- empty disjunct found → conflict
+has-empty-clause ((_ ∷ _) ∷ ϕ) = has-empty-clause ϕ
 
-choose-lit : (cnf : CNF) → Maybe Literal
+choose-lit : (ϕ : CNF) → Maybe Literal
 choose-lit [] = nothing
-choose-lit ([] ∷ cnf) = choose-lit cnf
+choose-lit ([] ∷ ϕ) = choose-lit ϕ
 choose-lit ((x ∷ _) ∷ _) = just x
 
-------------------- Attempt 1 with nested recursion
-try-both-1 : ℕ → Assignment → Literal → CNF → Maybe Assignment
-dpll-helper-1 : ℕ → Assignment → CNF → Maybe Assignment
-
-dpll-helper-1 _ asg [] = just asg
-dpll-helper-1 zero _ _ = nothing
-dpll-helper-1 (suc n) asg ϕ with unit-propagate ϕ , has-empty-clause ϕ
-... | (_ , _) , true       = nothing -- found empty clause, contradiction
-... | (ϕ' , just l) , _     = dpll-helper-1 n (lit→pair l ∷ asg) ϕ' -- unit found, assign and recurse
-... | (ϕ' , nothing) , _  with choose-lit ϕ' -- no units, choose a literal
-...   | nothing = just asg -- no variables left, assignment satisfies
-...   | just l  = try-both-1 n asg l ϕ
-
-try-both-1 n asg l ϕ with dpll-helper-1 n (lit→pair l ∷ asg)
-                              (reduce-cnf (units-to-assign (l ∷ [])) ϕ)
-... | just r  = just r                                    -- l = true satisfied it
-... | nothing = dpll-helper-1 n (lit→pair l' ∷ asg)
-                              (reduce-cnf (units-to-assign (l' ∷ [])) ϕ)  -- try l = false
-                where l' = neg-lit l
--------------------
-
+-- DPLL implementation itself
+-- Left out pure literal elimination since we mentioned in class it doesn't actually speed things up in practice
 
 dpll-helper : ℕ → Assignment → CNF → Maybe Assignment
-
--- Empty conjunction is true
-dpll-helper _ asg [] = just asg
--- Out of fuel
-dpll-helper zero asg ϕ = nothing
-
+dpll-helper _ asg [] = just asg -- Empty conjunction is true
+dpll-helper zero asg ϕ = nothing -- Out of fuel
 dpll-helper (suc n) asg ϕ with has-empty-clause ϕ , unit-propagate ϕ
--- Empty clause, unsat
-... | true , _ = nothing
--- Unit found, recurse
-... | false , ϕ' , just l = dpll-helper n (lit→pair l ∷ asg) ϕ'
--- No unit, choose literal and branch
-... | false , ϕ' , nothing with choose-lit ϕ'
-...   | nothing = just asg
+... | true , _ = nothing -- Empty clause, unsat
+... | false , ϕ' , just l = dpll-helper n (lit→pair l ∷ asg) ϕ' -- Unit found, recurse
+... | false , ϕ' , nothing with choose-lit ϕ' -- No unit, choose literal and branch
+...   | nothing = nothing
 ...   | just l = let
   l' = neg-lit l
   pos = dpll-helper n (lit→pair l  ∷ asg) (reduce-cnf (units-to-assign (l  ∷ [])) ϕ')
   neg = dpll-helper n (lit→pair l' ∷ asg) (reduce-cnf (units-to-assign (l' ∷ [])) ϕ')
   in pos <∣> neg
 
-dpll-1 : CNF → Maybe Assignment
-dpll-1 ϕ = dpll-helper-1 (length (all-literals' ϕ)) [] ϕ
+max-var-lit : Literal → ℕ
+max-var-lit (Pos n) = n
+max-var-lit (Neg n) = n
+
+max-var-disjunct : Disjunct → ℕ
+max-var-disjunct [] = 0
+max-var-disjunct (Pos x ∷ d) = x ⊔ max-var-disjunct d
+max-var-disjunct (Neg x ∷ d) = x ⊔ max-var-disjunct d
+
+max-var-cnf : CNF → ℕ
+max-var-cnf [] = 0
+max-var-cnf (x ∷ ϕ) = max-var-disjunct x ⊔ max-var-cnf ϕ
+
+-- Add missing variables that don't matter for the assignment dpll finds
+complete-assignment : ℕ → Assignment → Assignment
+complete-assignment zero asg with zero ∈? asg
+... | yes _ = asg
+... | no  _ = (zero , false) ∷ asg
+complete-assignment (suc n) asg with (suc n) ∈? asg
+... | yes _ = complete-assignment n asg
+... | no  _ = complete-assignment n ((suc n , false) ∷ asg)
 
 dpll : CNF → Maybe Assignment
-dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
-
-cnf-contra = (Pos 0 ∷ []) ∷ (Neg 0 ∷ []) ∷ []
-cnf-unit = (Pos 0 ∷ []) ∷ []
-cnf-or = (Pos 0 ∷ Pos 1 ∷ []) ∷ []
-cnf-chain = (Pos 0 ∷ Pos 1 ∷ [])
-          ∷ (Neg 0 ∷ [])
-          ∷ (Neg 1 ∷ Pos 2 ∷ [])
-          ∷ []
-cnf-unsat2 = (Pos 0 ∷ Pos 1 ∷ [])
-           ∷ (Pos 0 ∷ Neg 1 ∷ [])
-           ∷ (Neg 0 ∷ Pos 1 ∷ [])
-           ∷ (Neg 0 ∷ Neg 1 ∷ [])
-           ∷ []
-
-
-  
-
+dpll ϕ with (dpll-helper (length (all-literals' ϕ)) [] ϕ)
+... | nothing = nothing
+... | just asg = just (complete-assignment (max-var-cnf ϕ) asg)
 
 -- * Problem 10 - SAT correctness
 ------------------
 -- Show that the SAT solver is correct, if that is not obvious from the output type.
--- i.e. if the solver returns an assignment, prove eval-cnf asg cnf ≡ just true.
+
 
 -- * Problem 11 - Tseytin
 ------------------
@@ -369,11 +373,6 @@ cnf-unsat2 = (Pos 0 ∷ Pos 1 ∷ [])
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
 
 -- First see the largest variable index used so we keep same var indices
-
-max-var-lit : Literal → ℕ
-max-var-lit (Pos n) = n
-max-var-lit (Neg n) = n
-    
 max-var-nnf : NNF → ℕ
 max-var-nnf (lit x)   = max-var-lit x
 max-var-nnf (ϕ ∧An ψ) = max-var-nnf ϕ ⊔ max-var-nnf ψ
@@ -408,3 +407,6 @@ nnf-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 ------------------
 -- Use the above to construct a SAT solver for any Formula.
 -- i.e. compose to-nnf, NNF-to-CNF, and the CNF SAT solver.
+
+sat : Formula → Maybe Assignment
+sat ϕ = dpll (nnf-to-cnf (to-nnf ϕ))
