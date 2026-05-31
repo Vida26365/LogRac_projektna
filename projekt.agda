@@ -12,10 +12,10 @@ import Relation.Binary.PropositionalEquality as Eq
 open Eq using (_≡_; refl; sym; trans; cong; subst; _≢_)
 open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
-open import Data.List using (List; []; _∷_; head; _++_; map)
+open import Data.List using (List; []; _∷_; head; _++_; map; length)
 -- open import Data.Empty using (⊥)
 
--- * Problem 1 --
+-- * Problem 1  - Formula type
 -----------------
 -- Define a type of formulas called Formula, with the following grammar:
 --   Formula → Var n
@@ -33,7 +33,7 @@ infixr 6 _∧A_
 infixr 5 _∨A_
 
 
--- * Problem 2 --
+-- * Problem 2  - NNF type
 -----------------
 -- Define a type of negation normal form formulas called NNF, with the following grammar:
 --   Literal → Var n
@@ -59,7 +59,7 @@ data NNF : Set where
   _∨An_ : NNF → NNF → NNF
 
 
--- * Problem 3 --
+-- * Problem 3  - to-nnf
 -----------------
 -- Construct a function to-nnf of type Formula → NNF that converts a formula
 -- to an equivalent formula in negation normal form.
@@ -73,7 +73,7 @@ to-nnf (¬A (f ∨A g)) = to-nnf (¬A f) ∧An to-nnf ( ¬A g)
 to-nnf (f ∧A g) = to-nnf f ∧An to-nnf g
 to-nnf (f ∨A g) = to-nnf f ∨An to-nnf g
 
--- * Problem 4 --
+-- * Problem 4  - assoc
 -----------------
 -- Copy the Assoc module from week 9 exercises and complete it to a fully
 -- working implementation of an associative structure (associative list, dictionary, etc.).
@@ -127,7 +127,7 @@ module Assoc (K : DecType) (V : Set) where
   ... | no p = ((k , v)) ∷ kvs 
 
 
--- * Problem 5 --
+-- * Problem 5  - eval formulas
 -----------------
 -- Define an evaluation function eval : Assignment → Formula → Maybe Bool
 -- assigning to each assignment of variables and formula its truth value.
@@ -139,6 +139,16 @@ suc m eqn zero = no (λ ())
 suc m eqn suc n with m eqn n
 ... | yes p = yes (cong suc p)
 ... | no ¬p = no (λ h → ¬p (cong pred h))
+
+literal-eq : (a b : Literal) → Dec (a ≡ b)
+literal-eq (Pos m) (Pos n) with m eqn n
+... | yes refl = yes refl
+... | no ¬p    = no (λ { refl → ¬p refl })
+literal-eq (Neg m) (Neg n) with m eqn n
+... | yes refl = yes refl
+... | no ¬p    = no (λ { refl → ¬p refl })
+literal-eq (Pos _) (Neg _) = no (λ ())
+literal-eq (Neg _) (Pos _) = no (λ ())
 
 open Assoc record { carr = ℕ ; test-≡ = _eqn_ } Bool
 
@@ -159,7 +169,7 @@ eval asg (ϕ ∨A ψ) with ((eval asg ϕ) , (eval asg ψ))
 ... | (just x , just y) = just (x ∨ y)
 ... | _ = nothing
 
--- * Problem 6 --
+-- * Problem 6  - eval-nnf
 -----------------
 -- Define an evaluation function eval-nnf : Assignment → NNF → Maybe Bool
 -- assigning to each assignment of variables and NNF formula its truth value.
@@ -180,7 +190,7 @@ eval-nnf asg (ϕ ∨An ψ) with ( (eval-nnf asg ϕ) , (eval-nnf asg ψ) )
 ... | just x , just y = just (x ∨ y)
 ... | _ , _ = nothing
 
--- * Problem 7 --
+-- * Problem 7  - CNF type
 -----------------
 -- Define a type of conjunction normal form formulas called CNF, with the following grammar:
 --   Literal  → Var n
@@ -213,12 +223,14 @@ eval-cnf asg (d ∷ p) with eval-disjunct asg d | eval-cnf asg p
 ... | just a  | just b  = just (a ∧ b)
 ... | _       | _       = nothing
 
--- * Problem 9 --
+-- * Problem 9  - DPLL
 -----------------
 -- Write a SAT solver for CNF formulas.
 -- Output: either an assignment such that eval-cnf asg cnf ≡ just true,
 --         or a proof that no such assignment exists.
 -- Note: a more complex implementation (e.g. DPLL) will be graded higher.
+
+-- We adapted some core functions from https://github.com/joshuaguerin/DPLL/blob/main/DPLL.hs
 
 Units = List Literal -- list unitov
 Literals = List Literal -- list literalov
@@ -226,10 +238,6 @@ Literals = List Literal -- list literalov
 data SatResult (cnf : CNF) : Set where
   sat   : (asg : Assignment) → eval-cnf asg cnf ≡ just true → SatResult cnf
   unsat : (∀ (asg : Assignment) → eval-cnf asg cnf ≢ just true) → SatResult cnf
-
-sat-solver : (cnf : CNF) → SatResult cnf
-sat-solver ϕ = {!  !}
-
 
 ---------------  Vse to je za filterDuplicates, da lahko dobimo literals
 PosLiterals = List Literal
@@ -311,6 +319,10 @@ contradiction (x ∷ cnf) asg with (eval-disjunct asg x)
 ... | just b = not b ∨ contradiction cnf asg
 ... | nothing = contradiction cnf asg
 
+has-empty-clause : CNF → Bool
+has-empty-clause [] = false
+has-empty-clause ([] ∷ _)        = true -- empty disjunct found → conflict
+has-empty-clause ((_ ∷ _) ∷ cnf) = has-empty-clause cnf
 
 
 ------ Katere funkcije mankajo?
@@ -322,14 +334,34 @@ contradiction (x ∷ cnf) asg with (eval-disjunct asg x)
 -- check
 ------------------
 
+dpll-helper : ℕ → Assignment → CNF → Maybe Assignment
+dpll-helper _ asg [] = just asg -- All clauses satisfied
+dpll-helper zero _ _ = nothing  -- Out of fuel
+dpll-helper (suc n) asg ϕ with (unit-propagate ϕ)
+... | ϕ' , [] = {!!}
+... | ϕ' , us = dpll-helper n (units-to-assign us ++ asg) ϕ' -- Assign unit clauses
 
+dpll : CNF → Maybe Assignment
+dpll ϕ = dpll-helper (length (all-literals' ϕ)) [] ϕ
 
--- * Problem 10 --
+þ = (Pos 0 ∷ [])
+         ∷ (Neg 0 ∷ Pos 1 ∷ [])
+         ∷ (Pos 1 ∷ Pos 2 ∷ [])
+         ∷ []
+
+contra = (Pos 0 ∷ [])
+       ∷ (Neg 0 ∷ [])
+       ∷ []
+
+⟡ = (Pos 0 ∷ [])
+    ∷ (Pos 1 ∷ [])
+    ∷ []
+-- * Problem 10 - SAT correctness
 ------------------
 -- Show that the SAT solver is correct, if that is not obvious from the output type.
 -- i.e. if the solver returns an assignment, prove eval-cnf asg cnf ≡ just true.
 
--- * Problem 11 --
+-- * Problem 11 - Tseytin
 ------------------
 -- Write a function that converts an NNF formula to an equisatisfiable CNF formula.
 -- Note: Tseytin transformation intended; simpler implementation accepted for partial credit.
@@ -370,7 +402,7 @@ nnf-to-cnf : NNF → CNF
 nnf-to-cnf ϕ with tseytin ϕ (suc (max-var-nnf ϕ))
 ... | root , cs , _ = (litd root) ∷ cs
   
--- * Problem 12 --
+-- * Problem 12 - SAT for any formula
 ------------------
 -- Use the above to construct a SAT solver for any Formula.
 -- i.e. compose to-nnf, NNF-to-CNF, and the CNF SAT solver.
