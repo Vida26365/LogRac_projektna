@@ -1,5 +1,6 @@
 -- https://ucilnica.fmf.uni-lj.si/pluginfile.php/183756/mod_resource/content/3/project.pdf
 
+{-# OPTIONS --allow-unsolved-metas #-}
 module projekt where
 
 open import Data.Nat using (ℕ; zero; suc; pred; _+_; _⊔_; _≤?_)
@@ -185,8 +186,7 @@ eval-literal asg (Neg x) with asg ‼ x
 ... | nothing = nothing
 
 eval-nnf : Assignment → NNF → Maybe Bool
-eval-nnf asg (lit (Pos x)) = asg ‼ x
-eval-nnf asg (lit (Neg x)) = eval asg (¬A ( Var x ))
+eval-nnf asg (lit x) = eval-literal asg x
 eval-nnf asg (ϕ ∧An ψ) with ((eval-nnf asg ϕ) , (eval-nnf asg ψ))
 ... | just x , just y = just (x ∧ y)
 ... | _ , _ = nothing
